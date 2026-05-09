@@ -2,12 +2,6 @@
 .env
 .env.example
 
-# Go binaries
-**/main
-**/api-gateway
-**/order-service
-**/portfolio-service
-**/notification-service
 
 # Node dependencies
 node_modules/
