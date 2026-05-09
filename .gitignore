@@ -1,0 +1,28 @@
+# Environment variables
+.env
+.env.example
+
+# Go binaries
+**/main
+**/api-gateway
+**/order-service
+**/portfolio-service
+**/notification-service
+
+# Node dependencies
+node_modules/
+frontend/dist/
+frontend/.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+.docker/
+
+# OS files
+.DS_Store
+Thumbs.db
