@@ -25,5 +25,6 @@
 - **Observability**: Prometheus + Grafana
 
 ## Setup Instructions
-1. Run `docker-compose up -d` to start up infrastructure (Kafka, Postgres, Redis, Prometheus, Grafana).
-2. Go to each service directory (`api-gateway`, `order-service`, `portfolio-service`, `notification-service`) and run `go run main.go`.
+1. Run `docker compose up --build` from the repo root.
+2. This starts the infrastructure, all Go backend services, and the frontend in one command.
+3. Open the frontend at http://localhost:5173 and the API gateway at http://localhost:8080.
