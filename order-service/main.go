@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"order-service/cache"
@@ -42,29 +43,40 @@ func main() {
 
 // POST /orders
 func placeOrder(c *gin.Context) {
-	var order models.Order
-	if err := c.ShouldBindJSON(&order); err != nil {
+	var request CreateOrderRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Idempotency check
-	if cache.CheckIdempotency(order.IdempotencyKey) {
+	if !cache.ClaimIdempotency(request.IdempotencyKey, idempotencyTTL) {
 		c.JSON(http.StatusConflict, gin.H{"error": "Duplicate order request"})
 		return
 	}
 
-	order.Status = "PENDING"
+	order := models.Order{
+		UserID:         request.UserID,
+		FundID:         request.FundID,
+		Amount:         request.Amount,
+		Type:           request.Type,
+		Status:         models.StatusPending,
+		IdempotencyKey: request.IdempotencyKey,
+	}
+
 	if err := database.DB.Create(&order).Error; err != nil {
+		cache.ReleaseIdempotency(request.IdempotencyKey)
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate key") {
+			c.JSON(http.StatusConflict, gin.H{"error": "Duplicate order request"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save order"})
 		return
 	}
 
-	// Save to Redis for idempotency
-	cache.SetIdempotency(order.IdempotencyKey, 24*3600)
+	cache.SetIdempotency(order.IdempotencyKey, idempotencyTTL)
 
-	// Publish to Kafka
-	messaging.PublishOrderEvent(order)
+	publishOrderSnapshot(order.ID)
+	go processOrderLifecycle(order.ID)
 
 	c.JSON(http.StatusCreated, order)
 }
@@ -96,22 +108,38 @@ func updateOrder(c *gin.Context) {
 		return
 	}
 
-	var input map[string]interface{}
-	if err := c.ShouldBindJSON(&input); err != nil {
+	var request UpdateOrderStatusRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	database.DB.Model(&order).Updates(input)
+	if err := applyManualOrderStatus(&order, request.Status); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, order)
 }
 
 // DELETE /orders/:id
 func deleteOrder(c *gin.Context) {
 	id := c.Param("id")
+	var order models.Order
+	if err := database.DB.First(&order, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Order not found"})
+		return
+	}
+
+	if order.Status != models.StatusPending {
+		c.JSON(http.StatusConflict, gin.H{"error": "Only pending orders can be deleted"})
+		return
+	}
+
 	if err := database.DB.Delete(&models.Order{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete order"})
 		return
 	}
+	cache.ReleaseIdempotency(order.IdempotencyKey)
 	c.JSON(http.StatusOK, gin.H{"message": "Order deleted successfully"})
 }

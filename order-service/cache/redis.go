@@ -37,7 +37,22 @@ func CheckIdempotency(key string) bool {
 	return exists > 0
 }
 
+// ClaimIdempotency atomically reserves a request key so duplicate submissions
+// cannot slip through a race between the existence check and write.
+func ClaimIdempotency(key string, expiration time.Duration) bool {
+	ok, err := RedisClient.SetNX(ctx, key, "processing", expiration).Result()
+	if err != nil {
+		return false
+	}
+	return ok
+}
+
 // SetIdempotency sets a key in Redis with an expiration
 func SetIdempotency(key string, expiration time.Duration) {
 	RedisClient.Set(ctx, key, "processed", expiration)
+}
+
+// ReleaseIdempotency removes a reservation when order persistence fails.
+func ReleaseIdempotency(key string) {
+	RedisClient.Del(ctx, key)
 }
