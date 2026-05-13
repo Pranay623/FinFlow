@@ -1,204 +1,32 @@
 :root {
-  --bg-color: #0b0e11;
-  --card-bg: rgba(23, 27, 34, 0.7);
-  --accent-color: #00d09c;
-  --text-primary: #ffffff;
-  --text-secondary: #848e9c;
-  --border-color: rgba(255, 255, 255, 0.1);
-  --glass-blur: 12px;
+  --text: #f4fbff;
+  --muted: #93a9b8;
+  --page: #071018;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  overflow-x: hidden;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.dashboard-container {
-  display: flex;
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+#root {
   min-height: 100vh;
 }
-
-/* Sidebar */
-.sidebar {
-  width: 260px;
-  background: var(--card-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  border-right: 1px solid var(--border-color);
-  padding: 2rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-}
-
-.logo {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: var(--accent-color);
-  letter-spacing: -0.5px;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.nav-links {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.nav-item:hover, .nav-item.active {
-  background: rgba(0, 208, 156, 0.1);
-  color: var(--accent-color);
-}
-
-/* Main Content */
-.main-content {
-  flex: 1;
-  padding: 2rem 3rem;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 3rem;
-}
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  background: var(--card-bg);
-  padding: 0.5rem 1rem;
-  border-radius: 50px;
-  border: 1px solid var(--border-color);
-}
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  background: var(--accent-color);
-  border-radius: 50%;
-}
-
-/* Stats Grid */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 3rem;
-}
-
-.stat-card {
-  background: var(--card-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  padding: 1.5rem;
-  border-radius: 24px;
-  border: 1px solid var(--border-color);
-  transition: transform 0.3s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-5px);
-  border-color: rgba(0, 208, 156, 0.3);
-}
-
-.stat-label {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-}
-
-.stat-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-}
-
-.stat-change {
-  font-size: 0.875rem;
-  color: var(--accent-color);
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-/* Orders Section */
-.section-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.btn-primary {
-  background: var(--accent-color);
-  color: #000;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-}
-
-.orders-table {
-  width: 100%;
-  background: var(--card-bg);
-  border-radius: 24px;
-  overflow: hidden;
-  border: 1px solid var(--border-color);
-  border-collapse: collapse;
-}
-
-.orders-table th {
-  text-align: left;
-  padding: 1.25rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.orders-table td {
-  padding: 1.25rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 50px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.status-pending { background: rgba(255, 165, 0, 0.1); color: #ffa500; }
-.status-completed { background: rgba(0, 208, 156, 0.1); color: var(--accent-color); }

@@ -1,172 +1,431 @@
-import React, { useState } from 'react';
-import { 
-  LayoutDashboard, 
-  TrendingUp, 
-  History, 
-  Wallet, 
-  Bell, 
-  Search, 
-  ArrowUpRight,
-  Plus,
-  ArrowRight
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import {
+  Activity,
+  ArrowRight,
+  CheckCircle2,
+  CircleDashed,
+  Clock3,
+  Cloud,
+  Layers3,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import './App.css';
 
-const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+type OrderStatus = 'PENDING' | 'PROCESSING' | 'EXECUTED' | 'FAILED';
+type OrderType = 'SIP' | 'LUMPSUM';
+type ServiceStatus = 'UP' | 'DOWN';
 
-  const stats = [
-    { label: 'Total Investment', value: '₹ 4,50,000', change: '+12.4%' },
-    { label: 'Current Value', value: '₹ 5,12,340', change: '+14.2%' },
-    { label: 'Total Returns', value: '₹ 62,340', change: '+8.1%' }
-  ];
+interface Order {
+  id: string;
+  user_id: string;
+  fund_id: string;
+  amount: number;
+  type: OrderType;
+  status: OrderStatus;
+  idempotency_key: string;
+  created_at: string;
+  updated_at: string;
+}
 
-  const recentOrders = [
-    { id: '1', fund: 'Quant Small Cap Fund', amount: '₹ 5,000', type: 'SIP', status: 'Completed', date: '2 hours ago' },
-    { id: '2', fund: 'Parag Parikh Flexi Cap', amount: '₹ 10,000', type: 'Lumpsum', status: 'Pending', date: '5 hours ago' },
-    { id: '3', fund: 'Mirae Asset Large Cap', amount: '₹ 2,500', type: 'SIP', status: 'Completed', date: 'Yesterday' }
-  ];
+interface ServiceHealthItem {
+  service: string;
+  url: string;
+  status: ServiceStatus;
+}
+
+interface ServiceHealthResponse {
+  status: 'UP' | 'DEGRADED';
+  services: ServiceHealthItem[];
+}
+
+interface OrderFormState {
+  userId: string;
+  fundId: string;
+  amount: string;
+  type: OrderType;
+  idempotencyKey: string;
+}
+
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/$/, '');
+
+const initialForm = (): OrderFormState => ({
+  userId: 'user-001',
+  fundId: 'quant-small-cap-fund',
+  amount: '5000',
+  type: 'SIP',
+  idempotencyKey: crypto.randomUUID(),
+});
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${apiBase}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error ?? `Request failed with ${response.status}`);
+  }
+
+  return payload as T;
+}
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatDate(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function statusTone(status: OrderStatus) {
+  switch (status) {
+    case 'PENDING':
+      return 'pending';
+    case 'PROCESSING':
+      return 'processing';
+    case 'EXECUTED':
+      return 'executed';
+    case 'FAILED':
+      return 'failed';
+  }
+}
+
+export default function App() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [services, setServices] = useState<ServiceHealthItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState<OrderFormState>(() => initialForm());
+
+  const orderMetrics = useMemo(() => {
+    const totalInvested = orders.reduce((sum, order) => sum + order.amount, 0);
+    const pending = orders.filter((order) => order.status === 'PENDING').length;
+    const processing = orders.filter((order) => order.status === 'PROCESSING').length;
+    const executed = orders.filter((order) => order.status === 'EXECUTED').length;
+    const failed = orders.filter((order) => order.status === 'FAILED').length;
+    return { totalInvested, pending, processing, executed, failed };
+  }, [orders]);
+
+  const allServicesHealthy = services.length > 0 && services.every((service) => service.status === 'UP');
+
+  useEffect(() => {
+    void refreshAll();
+    const timer = window.setInterval(() => {
+      void refreshAll();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  async function refreshAll() {
+    try {
+      setError(null);
+      setLoading(true);
+      const [health, orderList] = await Promise.all([
+        apiRequest<ServiceHealthResponse>('/services/health'),
+        apiRequest<Order[]>('/orders'),
+      ]);
+      setServices(health.services);
+      setOrders(orderList.sort((left, right) => right.created_at.localeCompare(left.created_at)));
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Unable to load FinFlow data');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      await apiRequest<Order>('/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: form.userId,
+          fund_id: form.fundId,
+          amount: Number(form.amount),
+          type: form.type,
+          idempotency_key: form.idempotencyKey,
+        }),
+      });
+      setForm((current) => ({ ...current, amount: '5000', idempotencyKey: crypto.randomUUID() }));
+      await refreshAll();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to place order');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function updateStatus(orderId: string, status: OrderStatus) {
+    setError(null);
+    try {
+      await apiRequest<Order>(`/orders/${orderId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      await refreshAll();
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Unable to update order');
+    }
+  }
 
   return (
-    <div className="dashboard-container">
-      {/* Sidebar */}
+    <div className="app-shell">
       <aside className="sidebar">
-        <div className="logo">
-          <TrendingUp size={28} />
-          <span>FinFlow</span>
-        </div>
-
-        <nav className="nav-links">
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'market', label: 'Market', icon: TrendingUp },
-            { id: 'portfolio', label: 'Portfolio', icon: Wallet },
-            { id: 'orders', label: 'Orders', icon: History },
-          ].map((item) => (
-            <div 
-              key={item.id}
-              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <item.icon size={20} />
-              <span>{item.label}</span>
-            </div>
-          ))}
-        </nav>
-
-        <div style={{ marginTop: 'auto' }}>
-          <div className="nav-item">
-            <Bell size={20} />
-            <span>Notifications</span>
+        <div className="brand-mark">
+          <div className="brand-orb">
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <div className="brand-name">FinFlow</div>
+            <div className="brand-subtitle">Order control plane</div>
           </div>
         </div>
+
+        <div className="sidebar-card">
+          <div className="sidebar-card-label">Gateway</div>
+          <div className="sidebar-card-value">{apiBase}</div>
+          <div className={`status-pill ${allServicesHealthy ? 'status-pill-up' : 'status-pill-degraded'}`}>
+            <ShieldCheck size={14} />
+            {allServicesHealthy ? 'All services healthy' : 'Some services degraded'}
+          </div>
+        </div>
+
+        <nav className="sidebar-links">
+          <a href="#overview">Overview</a>
+          <a href="#order-form">Place order</a>
+          <a href="#service-health">Service health</a>
+          <a href="#orders">Orders</a>
+        </nav>
+
+        <button className="refresh-button" type="button" onClick={() => void refreshAll()}>
+          <RefreshCw size={16} />
+          Refresh stack
+        </button>
       </aside>
 
-      {/* Main Content */}
-      <main className="main-content">
-        <header className="header">
+      <main className="content">
+        <section className="hero" id="overview">
           <div>
-            <h1>Welcome back, Investor</h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-              Your portfolio is up by 2.4% today.
+            <div className="eyebrow">
+              <Activity size={14} />
+              Connected to API gateway
+            </div>
+            <h1>Mutual fund orders, backed by real services.</h1>
+            <p>
+              Create SIP and lump-sum orders, watch the lifecycle move through PENDING, PROCESSING, and terminal states,
+              and verify the backend services from one dashboard.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
-              <Search 
-                size={18} 
-                style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} 
-              />
-              <input 
-                type="text" 
-                placeholder="Search funds..." 
-                style={{
-                  background: 'var(--card-bg)',
-                  border: '1px solid var(--border-color)',
-                  padding: '0.6rem 1rem 0.6rem 2.5rem',
-                  borderRadius: '12px',
-                  color: 'white',
-                  width: '240px'
-                }}
-              />
+          <div className="hero-card">
+            <div className="hero-card-top">
+              <span>System status</span>
+              <span className={`system-chip ${allServicesHealthy ? 'system-chip-up' : 'system-chip-degraded'}`}>
+                {allServicesHealthy ? 'Stable' : 'Degraded'}
+              </span>
             </div>
-            <div className="user-profile">
-              <div className="avatar"></div>
-              <span>John Doe</span>
+            <div className="hero-card-metric">{formatCurrency(orderMetrics.totalInvested)}</div>
+            <div className="hero-card-caption">Capital routed through the order service</div>
+            <div className="hero-card-row">
+              <span><CheckCircle2 size={14} /> {orderMetrics.executed} executed</span>
+              <span><Clock3 size={14} /> {orderMetrics.pending + orderMetrics.processing} active</span>
             </div>
           </div>
-        </header>
-
-        {/* Stats Grid */}
-        <section className="stats-grid">
-          {stats.map((stat, i) => (
-            <motion.div 
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="stat-card"
-            >
-              <div className="stat-label">{stat.label}</div>
-              <div className="stat-value">{stat.value}</div>
-              <div className="stat-change">
-                <ArrowUpRight size={16} />
-                {stat.change}
-              </div>
-            </motion.div>
-          ))}
         </section>
 
-        {/* Orders Section */}
-        <section>
-          <div className="section-title">
-            <span>Recent Orders</span>
-            <button className="btn-primary">
-              <Plus size={18} style={{ marginRight: '0.5rem' }} />
-              New SIP
+        <section className="metrics-grid">
+          <motion.article className="metric-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="metric-label">Executed</div>
+            <div className="metric-value">{orderMetrics.executed}</div>
+            <div className="metric-foot"><CheckCircle2 size={14} /> Successful orders</div>
+          </motion.article>
+          <motion.article className="metric-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+            <div className="metric-label">Active</div>
+            <div className="metric-value">{orderMetrics.pending + orderMetrics.processing}</div>
+            <div className="metric-foot"><CircleDashed size={14} /> Pending or processing</div>
+          </motion.article>
+          <motion.article className="metric-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <div className="metric-label">Failed</div>
+            <div className="metric-value">{orderMetrics.failed}</div>
+            <div className="metric-foot"><ArrowRight size={14} /> Rejected or failed lifecycle</div>
+          </motion.article>
+          <motion.article className="metric-card" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+            <div className="metric-label">Services</div>
+            <div className="metric-value">{services.filter((service) => service.status === 'UP').length}/{services.length}</div>
+            <div className="metric-foot"><Layers3 size={14} /> Gateway, order, portfolio, notification</div>
+          </motion.article>
+        </section>
+
+        <section className="dashboard-grid">
+          <motion.section className="panel" id="order-form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-header">
+              <div>
+                <div className="panel-kicker">Order desk</div>
+                <h2>Place an order through the gateway</h2>
+              </div>
+              <Send size={18} />
+            </div>
+
+            <form className="order-form" onSubmit={handleSubmit}>
+              <label>
+                User ID
+                <input value={form.userId} onChange={(event) => setForm({ ...form, userId: event.target.value })} />
+              </label>
+              <label>
+                Fund ID
+                <input value={form.fundId} onChange={(event) => setForm({ ...form, fundId: event.target.value })} />
+              </label>
+              <label>
+                Amount
+                <input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
+              </label>
+              <label>
+                Order type
+                <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as OrderType })}>
+                  <option value="SIP">SIP</option>
+                  <option value="LUMPSUM">LUMPSUM</option>
+                </select>
+              </label>
+              <label className="full-width">
+                Idempotency key
+                <input value={form.idempotencyKey} onChange={(event) => setForm({ ...form, idempotencyKey: event.target.value })} />
+              </label>
+
+              <button className="submit-button" type="submit" disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit order'}
+              </button>
+            </form>
+
+            <div className="helper-text">
+              The gateway forwards this to order-service, which persists the order, claims Redis idempotency, and publishes
+              the event to Kafka.
+            </div>
+          </motion.section>
+
+          <motion.section className="panel" id="service-health" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+            <div className="panel-header">
+              <div>
+                <div className="panel-kicker">Stack health</div>
+                <h2>Connected services</h2>
+              </div>
+              <Cloud size={18} />
+            </div>
+
+            <div className="service-list">
+              {services.map((service) => (
+                <div key={service.service} className="service-item">
+                  <div>
+                    <div className="service-name">{service.service}</div>
+                    <div className="service-url">{service.url}</div>
+                  </div>
+                  <span className={`status-pill ${service.status === 'UP' ? 'status-pill-up' : 'status-pill-down'}`}>
+                    {service.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="helper-text">
+              Gateway health is aggregated from order-service, portfolio-service, and notification-service endpoints.
+            </div>
+          </motion.section>
+        </section>
+
+        <motion.section className="panel" id="orders" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <div className="panel-header">
+            <div>
+              <div className="panel-kicker">Order book</div>
+              <h2>Latest orders</h2>
+            </div>
+            <button className="ghost-button" type="button" onClick={() => void refreshAll()}>
+              <RefreshCw size={16} />
+              Reload
             </button>
           </div>
 
-          <table className="orders-table">
-            <thead>
-              <tr>
-                <th>Fund Name</th>
-                <th>Amount</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Date</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.map((order, i) => (
-                <motion.tr 
-                  key={order.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.3 + (i * 0.1) }}
-                >
-                  <td style={{ fontWeight: 500 }}>{order.fund}</td>
-                  <td>{order.amount}</td>
-                  <td>{order.type}</td>
-                  <td>
-                    <span className={`status-badge status-${order.status.toLowerCase()}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{order.date}</td>
-                  <td>
-                    <ArrowRight size={18} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} />
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+          <div className="table-shell">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fund</th>
+                  <th>Amount</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td>
+                      <div className="fund-cell">
+                        <div className="fund-dot" />
+                        <div>
+                          <div className="fund-name">{order.fund_id}</div>
+                          <div className="fund-meta">{order.user_id}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{formatCurrency(order.amount)}</td>
+                    <td>{order.type}</td>
+                    <td>
+                      <span className={`order-badge order-badge-${statusTone(order.status).toLowerCase()}`}>{order.status}</span>
+                    </td>
+                    <td>{formatDate(order.created_at)}</td>
+                    <td>
+                      <div className="action-row">
+                        {order.status === 'PENDING' && (
+                          <button type="button" onClick={() => void updateStatus(order.id, 'PROCESSING')}>Process</button>
+                        )}
+                        {order.status === 'PROCESSING' && (
+                          <>
+                            <button type="button" onClick={() => void updateStatus(order.id, 'EXECUTED')}>Execute</button>
+                            <button type="button" onClick={() => void updateStatus(order.id, 'FAILED')}>Fail</button>
+                          </>
+                        )}
+                        {(order.status === 'EXECUTED' || order.status === 'FAILED') && <span className="action-static">Terminal</span>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && orders.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="empty-state">
+                      No orders yet. Create the first one above.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </motion.section>
+
+        {error && <div className="error-banner">{error}</div>}
       </main>
     </div>
   );
-};
-
-export default App;
+}
