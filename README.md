@@ -99,7 +99,7 @@ You don't need to install Go, Node.js, or any databases to run this. Everything 
 
 **1. Clone the repository and navigate to the project folder:**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Pranay623/FinFlow
 cd FinFlow
 ```
 
