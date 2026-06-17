@@ -16,6 +16,9 @@ func main() {
 	log.Println("Consuming events from Kafka topics...")
 
 	go startHTTPServer()
+	
+	// Start Kafka consumer in background
+	go startKafkaConsumer()
 
 	// Keep the service running
 	sigChan := make(chan os.Signal, 1)
