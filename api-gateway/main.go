@@ -9,21 +9,52 @@ import (
 	"os"
 	"time"
 
+	"api-gateway/middleware"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func main() {
 	r := gin.Default()
+	
+	// Apply CORS and Rate Limiting globally
 	r.Use(corsMiddleware())
+	r.Use(middleware.RateLimitMiddleware())
 
+	// Public Routes
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "UP", "service": "api-gateway"})
 	})
 	r.GET("/services/health", servicesHealth)
 
-	// Proxy for Order Service
-	r.Any("/orders/*path", proxyTo(orderServiceURL()))
-	r.Any("/orders", proxyTo(orderServiceURL()))
+	// Mock Login Route to generate a dummy JWT for testing
+	r.POST("/login", func(c *gin.Context) {
+		secret := os.Getenv("JWT_SECRET")
+		if secret == "" {
+			secret = "dev-secret"
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub": "user-123",
+			"exp": time.Now().Add(time.Hour * 24).Unix(),
+		})
+		tokenString, err := token.SignedString([]byte(secret))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": tokenString})
+	})
+
+	// Protected Routes
+	protected := r.Group("/")
+	protected.Use(middleware.JWTAuthMiddleware())
+	{
+		// Proxy for Order Service
+		protected.Any("/orders/*path", proxyTo(orderServiceURL()))
+		protected.Any("/orders", proxyTo(orderServiceURL()))
+		protected.Any("/portfolio/*path", proxyTo(orderServiceURL()))
+		protected.Any("/portfolio", proxyTo(orderServiceURL()))
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
