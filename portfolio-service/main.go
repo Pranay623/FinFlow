@@ -7,10 +7,14 @@ import (
 	"os"
 
 	"google.golang.org/grpc"
+
+	"portfolio-service/cache"
+	"portfolio-service/pb"
 )
 
 func main() {
 	log.Println("Portfolio Service Starting...")
+	cache.InitRedis()
 	go startHTTPServer()
 
 	lis, err := net.Listen("tcp", ":50051")
@@ -19,8 +23,8 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	// We will register services here later
-	
+	pb.RegisterPortfolioServiceServer(s, NewPortfolioServer())
+
 	log.Println("Portfolio gRPC server listening on :50051")
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
