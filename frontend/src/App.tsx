@@ -50,7 +50,25 @@ interface OrderFormState {
   idempotencyKey: string;
 }
 
+interface PnLHolding {
+  fund_id: string;
+  fund_name: string;
+  units: number;
+  invested_amount: number;
+  nav: number;
+  current_value: number;
+  unrealized_gain: number;
+}
+
+interface PnLResponse {
+  user_id: string;
+  total_value: number;
+  total_unrealized_gain: number;
+  holdings: PnLHolding[];
+}
+
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080').replace(/\/$/, '');
+let globalToken = localStorage.getItem('finflow_jwt');
 
 const initialForm = (): OrderFormState => ({
   userId: 'user-001',
@@ -61,9 +79,17 @@ const initialForm = (): OrderFormState => ({
 });
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (globalToken) {
+    headers['Authorization'] = `Bearer ${globalToken}`;
+  }
+
   const response = await fetch(`${apiBase}${path}`, {
     headers: {
-      'Content-Type': 'application/json',
+      ...headers,
       ...(init?.headers ?? {}),
     },
     ...init,
@@ -110,12 +136,18 @@ function statusTone(status: OrderStatus) {
 }
 
 export default function App() {
+  const [token, setToken] = useState<string | null>(globalToken);
   const [orders, setOrders] = useState<Order[]>([]);
   const [services, setServices] = useState<ServiceHealthItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<OrderFormState>(() => initialForm());
+  const [pnlUserId, setPnlUserId] = useState('user-1');
+  const [pnl, setPnl] = useState<PnLResponse | null>(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
+  const [pnlError, setPnlError] = useState<string | null>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
 
   const orderMetrics = useMemo(() => {
     const totalInvested = orders.reduce((sum, order) => sum + order.amount, 0);
@@ -129,12 +161,13 @@ export default function App() {
   const allServicesHealthy = services.length > 0 && services.every((service) => service.status === 'UP');
 
   useEffect(() => {
+    if (!token) return;
     void refreshAll();
     const timer = window.setInterval(() => {
       void refreshAll();
     }, 15000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [token]);
 
   async function refreshAll() {
     try {
@@ -151,6 +184,29 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleLogin() {
+    setLoginLoading(true);
+    setError(null);
+    try {
+      const data = await apiRequest<{token: string}>('/login', { method: 'POST' });
+      localStorage.setItem('finflow_jwt', data.token);
+      globalToken = data.token;
+      setToken(data.token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('finflow_jwt');
+    globalToken = null;
+    setToken(null);
+    setOrders([]);
+    setPnl(null);
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -191,6 +247,49 @@ export default function App() {
     }
   }
 
+  async function handlePnLFetch() {
+    if (!pnlUserId.trim()) {
+      setPnlError('Enter a user id to fetch P&L');
+      return;
+    }
+
+    setPnlError(null);
+    setPnlLoading(true);
+    try {
+      const response = await apiRequest<PnLResponse>(`/portfolio/${encodeURIComponent(pnlUserId)}/pnl`);
+      setPnl(response);
+    } catch (pnlFetchError) {
+      setPnlError(pnlFetchError instanceof Error ? pnlFetchError.message : 'Unable to load portfolio P&L');
+    } finally {
+      setPnlLoading(false);
+    }
+  }
+
+  if (!token) {
+    return (
+      <div className="app-shell" style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <motion.div className="panel" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={{ maxWidth: 400, width: '100%', margin: '0 auto' }}>
+          <div className="brand-mark" style={{ justifyContent: 'center', marginBottom: 24 }}>
+            <div className="brand-orb">
+              <Sparkles size={24} />
+            </div>
+            <div>
+              <div className="brand-name" style={{ fontSize: 24 }}>FinFlow</div>
+            </div>
+          </div>
+          <h2 style={{ textAlign: 'center', marginBottom: 8 }}>Authentication Required</h2>
+          <p style={{ textAlign: 'center', marginBottom: 24, color: 'var(--text-secondary)' }}>
+            The API Gateway is secured. You must authenticate to access the order control plane.
+          </p>
+          <button className="submit-button" onClick={() => void handleLogin()} disabled={loginLoading} style={{ width: '100%' }}>
+            {loginLoading ? 'Authenticating...' : 'Login with Dummy Token'}
+          </button>
+          {error && <div className="error-banner" style={{ marginTop: 16 }}>{error}</div>}
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -217,13 +316,19 @@ export default function App() {
           <a href="#overview">Overview</a>
           <a href="#order-form">Place order</a>
           <a href="#service-health">Service health</a>
+          <a href="#pnl">Portfolio P&amp;L</a>
           <a href="#orders">Orders</a>
         </nav>
 
-        <button className="refresh-button" type="button" onClick={() => void refreshAll()}>
-          <RefreshCw size={16} />
-          Refresh stack
-        </button>
+        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button className="refresh-button" type="button" onClick={() => void refreshAll()}>
+            <RefreshCw size={16} />
+            Refresh stack
+          </button>
+          <button className="refresh-button" type="button" onClick={handleLogout} style={{ backgroundColor: 'transparent', color: 'var(--danger-text)', border: '1px solid var(--danger-border)' }}>
+            Logout
+          </button>
+        </div>
       </aside>
 
       <main className="content">
@@ -353,6 +458,63 @@ export default function App() {
             </div>
           </motion.section>
         </section>
+
+        <motion.section className="panel pnl-panel" id="pnl" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+          <div className="panel-header">
+            <div>
+              <div className="panel-kicker">Portfolio intelligence</div>
+              <h2>Real-time P&amp;L</h2>
+            </div>
+            <Sparkles size={18} />
+          </div>
+
+          <div className="pnl-controls">
+            <label>
+              User ID
+              <input value={pnlUserId} onChange={(event) => setPnlUserId(event.target.value)} />
+            </label>
+            <button className="ghost-button" type="button" onClick={() => void handlePnLFetch()} disabled={pnlLoading}>
+              {pnlLoading ? 'Loading...' : 'Fetch P&L'}
+            </button>
+          </div>
+
+          {pnlError && <div className="error-banner">{pnlError}</div>}
+
+          {pnl && (
+            <div className="pnl-grid">
+              <div className="pnl-metric">
+                <div className="metric-label">Total value</div>
+                <div className="metric-value">{formatCurrency(pnl.total_value)}</div>
+              </div>
+              <div className="pnl-metric">
+                <div className="metric-label">Unrealized gain</div>
+                <div className={`metric-value ${pnl.total_unrealized_gain >= 0 ? 'pnl-positive' : 'pnl-negative'}`}>
+                  {formatCurrency(pnl.total_unrealized_gain)}
+                </div>
+              </div>
+              <div className="pnl-holdings">
+                {pnl.holdings.map((holding) => (
+                  <div key={holding.fund_id} className="pnl-holding">
+                    <div>
+                      <div className="fund-name">{holding.fund_name}</div>
+                      <div className="fund-meta">Units {holding.units.toFixed(2)} · NAV {holding.nav.toFixed(2)}</div>
+                    </div>
+                    <div className="pnl-values">
+                      <div>{formatCurrency(holding.current_value)}</div>
+                      <div className={holding.unrealized_gain >= 0 ? 'pnl-positive' : 'pnl-negative'}>
+                        {formatCurrency(holding.unrealized_gain)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="helper-text">
+            The portfolio service caches NAV prices in Redis and recalculates unrealized gains on demand.
+          </div>
+        </motion.section>
 
         <motion.section className="panel" id="orders" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <div className="panel-header">
