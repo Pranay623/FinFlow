@@ -79,6 +79,7 @@ services:
       - KAFKA_BROKERS=kafka:9092
       - DB_URL=postgres://finflow:password@postgres:5432/finflow_db?sslmode=disable
       - REDIS_URL=redis:6379
+      - PORTFOLIO_GRPC_URL=portfolio-service:50051
 
   portfolio-service:
     build: ./portfolio-service
@@ -99,8 +100,10 @@ services:
       - kafka
     environment:
       - PORT=8083
+      - KAFKA_BROKERS=kafka:9092
 
   # UI
+  
   frontend:
     build: ./frontend
     restart: unless-stopped
