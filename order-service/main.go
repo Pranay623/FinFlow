@@ -6,11 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"order-service/cache"
 	"order-service/database"
 	"order-service/messaging"
 	"order-service/models"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -18,6 +19,7 @@ func main() {
 	database.InitDB()
 	cache.InitRedis()
 	messaging.InitKafka()
+	InitPortfolioClient()
 
 	r := gin.Default()
 
@@ -31,6 +33,7 @@ func main() {
 	r.GET("/orders/:id", getOrder)
 	r.PATCH("/orders/:id", updateOrder)
 	r.DELETE("/orders/:id", deleteOrder)
+	r.GET("/portfolio/:userId/pnl", getUserPnL)
 
 	port := os.Getenv("PORT")
 	if port == "" {
