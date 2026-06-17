@@ -287,6 +287,90 @@
   gap: 14px;
 }
 
+.pnl-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.pnl-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.pnl-controls label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  min-width: 220px;
+}
+
+.pnl-controls input {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  outline: none;
+}
+
+.pnl-controls input:focus {
+  border-color: rgba(0, 208, 156, 0.65);
+  box-shadow: 0 0 0 4px rgba(0, 208, 156, 0.12);
+}
+
+.pnl-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.pnl-metric {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pnl-holdings {
+  display: grid;
+  gap: 12px;
+}
+
+.pnl-holding {
+  padding: 14px 16px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pnl-values {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  font-weight: 700;
+}
+
+.pnl-positive {
+  color: #86f7da;
+}
+
+.pnl-negative {
+  color: #ffb1a9;
+}
+
+.error-banner {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 103, 91, 0.18);
+  color: #ffd7d3;
+  font-weight: 600;
+}
+
 .order-form label {
   display: grid;
   gap: 8px;
